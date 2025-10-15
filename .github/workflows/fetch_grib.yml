@@ -1,0 +1,190 @@
+name: Fetch ECMWF GRIB2 and Generate PNGs
+
+on:
+  workflow_dispatch:
+
+jobs:
+  # -------------------------------------------------------
+  # 1️⃣ Fetch all GRIB2 data
+  # -------------------------------------------------------
+  fetch_and_generate:
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.set_run_date.outputs.run }}
+      date: ${{ steps.set_run_date.outputs.date }}
+
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v3
+        with:
+          token: ${{ secrets.ECMWF_PAT }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Cache Python packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Set RUN and DATE
+        id: set_run_date
+        run: |
+          HOUR=$(date -u +%H)
+          case $HOUR in
+            03|04|05|18) RUN=00 ;;
+            15|16|17) RUN=12 ;;
+          esac
+          DATE=$(date -u +%Y%m%d)
+          echo "RUN=$RUN" >> $GITHUB_ENV
+          echo "DATE=$DATE" >> $GITHUB_ENV
+          echo "run=$RUN" >> $GITHUB_OUTPUT
+          echo "date=$DATE" >> $GITHUB_OUTPUT
+
+      - name: Download ECMWF GRIB2 files
+        run: |
+          mkdir -p data/grib2
+          cd data/grib2
+
+          # 0 bis 144 in 3h-Schritten
+          seq 0 3 144 | xargs -n 1 -P 12 -I{} bash -c '
+            h={}
+            URL="https://data.ecmwf.int/forecasts/${{ env.DATE }}/${{ env.RUN }}z/ifs/0p25/oper/${{ env.DATE }}${{ env.RUN }}0000-${h}h-oper-fc.grib2"
+            OUTFILE="ecmwf_${h}h.grib2"
+
+            echo "Downloading $URL..."
+            wget -q --show-progress -O "$OUTFILE" "$URL" || echo "Datei $URL nicht verfügbar, überspringe..."
+          '
+
+          # 150 bis 360 in 6h-Schritten
+          seq 150 6 360 | xargs -n 1 -P 12 -I{} bash -c '
+            h={}
+            URL="https://data.ecmwf.int/forecasts/${{ env.DATE }}/${{ env.RUN }}z/ifs/0p25/oper/${{ env.DATE }}${{ env.RUN }}0000-${h}h-oper-fc.grib2"
+            OUTFILE="ecmwf_${h}h.grib2"
+
+            echo "Downloading $URL..."
+            wget -q --show-progress -O "$OUTFILE" "$URL" || echo "Datei $URL nicht verfügbar, überspringe..."
+          '
+
+      - name: Upload GRIB2 as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: grib2
+          path: data/
+
+      - name: Delete GRIB2 files (local cleanup)
+        run: rm -rf data/
+
+  # -------------------------------------------------------
+  # 2️⃣ Generate PNGs in parallel (matrix)
+  # -------------------------------------------------------
+  generate_pngs:
+    runs-on: ubuntu-latest
+    needs: fetch_and_generate
+    strategy:
+      matrix:
+        variable: [t2m, ww, tp_acc, wind, pmsl]
+      max-parallel: 5
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v3
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Download GRIB2 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: grib2
+          path: data/
+
+      - name: Generate PNGs for ${{ matrix.variable }}
+        run: |
+          mkdir -p ecmwf/${{ matrix.variable }}
+          python scripts/generate_pngs.py \
+            data/grib2 \
+            ecmwf/${{ matrix.variable }} \
+            ${{ matrix.variable }}
+
+      - name: Upload PNGs artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ecmwf-${{ matrix.variable }}
+          path: ecmwf/${{ matrix.variable }}
+
+  # -------------------------------------------------------
+  # 3️⃣ Merge PNGs + Deploy to R2
+  # -------------------------------------------------------
+  deploy_to_r2:
+    runs-on: ubuntu-latest
+    needs: [fetch_and_generate, generate_pngs]
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v3
+
+      - name: Download all PNG artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: ecmwf-*
+          path: ecmwf_raw
+
+      - name: Merge PNG folders into one structure
+        run: |
+          mkdir -p ecmwf/${{ needs.fetch_and_generate.outputs.run }}
+          for d in ecmwf_raw/*; do
+            if [ -d "$d" ]; then
+              varname=$(basename "$d" | sed 's/^ecmwf-//')  # entfernt "ecmwf-" Prefix
+              mkdir -p ecmwf/${{ needs.fetch_and_generate.outputs.run }}/"$varname"
+              cp -r "$d"/* ecmwf/${{ needs.fetch_and_generate.outputs.run }}/"$varname"/ || true
+            fi
+          done
+
+
+          echo "Merged structure:"
+          ls -R ecmwf/${{ needs.fetch_and_generate.outputs.run }}
+
+      - name: Generate Metadata
+        run: |
+          python scripts/generate_metadata.py \
+            ecmwf/${{ needs.fetch_and_generate.outputs.run }} \
+            ${{ needs.fetch_and_generate.outputs.run }} \
+            ${{ needs.fetch_and_generate.outputs.date }}
+
+      - name: Clean old runs on R2 except current
+        run: |
+          for run_folder in $(aws s3 ls s3://${{ secrets.R2_BUCKET }}/ecmwf/ \
+            --endpoint-url https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com | awk '{print $2}' | sed 's#/##'); do
+            if [ "$run_folder" != "${{ needs.fetch_and_generate.outputs.run }}/" ]; then
+              aws s3 rm s3://${{ secrets.R2_BUCKET }}/ecmwf/$run_folder --recursive \
+                --endpoint-url https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+            fi
+          done
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+
+      - name: Upload current run and metadata.json to R2
+        run: |
+          aws s3 sync ./ecmwf/${{ needs.fetch_and_generate.outputs.run }}/ \
+            s3://${{ secrets.R2_BUCKET }}/icon-eu/${{ needs.fetch_and_generate.outputs.run }}/ \
+            --endpoint-url https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+
+          aws s3 cp ./ecmwf/metadata.json \
+            s3://${{ secrets.R2_BUCKET }}/ecmwf/metadata.json \
+            --endpoint-url https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
