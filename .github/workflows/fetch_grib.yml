@@ -49,6 +49,13 @@ jobs:
           echo "run=$RUN" >> $GITHUB_OUTPUT
           echo "date=$DATE" >> $GITHUB_OUTPUT
 
+      # 🆕 NEU: Grid-Datei herunterladen
+      - name: Download ICON unstructured grid
+        run: |
+          mkdir -p data/grid
+          wget -q http://icon-downloads.mpimet.mpg.de/grids/public/edzw/icon_grid_0026_R03B07_G.nc -O data/grid/grid.nc
+          echo "✅ ICON grid heruntergeladen"
+
       - name: Download t2m GRIB2 files
         run: |
           mkdir -p data/t2m
@@ -165,6 +172,12 @@ jobs:
         with:
           name: grib2
           path: data/
+          
+      - name: Upload grid file as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: grid
+          path: data/grid/
 
       - name: Delete GRIB2 files (local cleanup)
         run: rm -rf data/
@@ -196,6 +209,12 @@ jobs:
         with:
           name: grib2
           path: data/
+          
+      - name: Download grid artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: grid
+          path: data/grid/
 
       - name: Generate PNGs for ${{ matrix.variable }}
         run: |
@@ -203,7 +222,8 @@ jobs:
           python scripts/generate_pngs.py \
             data/${{ matrix.variable }} \
             iconglobal/${{ matrix.variable }} \
-            ${{ matrix.variable }}
+            ${{ matrix.variable }} \
+            data/grid/grid.nc
 
       - name: Upload PNGs artifact
         uses: actions/upload-artifact@v4
