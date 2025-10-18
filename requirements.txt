@@ -1,5 +1,6 @@
 cfgrib
 xarray
+netCDF4
 matplotlib
 cartopy
 geopandas
