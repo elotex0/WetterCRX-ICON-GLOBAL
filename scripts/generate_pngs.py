@@ -426,7 +426,7 @@ for filename in sorted(os.listdir(data_dir)):
     legend_h_px = 50
     legend_bottom_px = 45
     if var_type in ["t2m", "dbz_cmax", "tp_acc", "cape_ml", "pmsl", "wind"]:
-        bounds = t2m_bounds if var_type=="t2m" else prec_bounds if var_type=="tp" else dbz_bounds if var_type=="dbz_cmax" else tp_acc_bounds if var_type=="tp_acc" else cape_bounds if var_type=="cape_ml" else pmsl_bounds_colors if var_type=="pmsl" else wind_bounds
+        bounds = t2m_bounds if var_type=="t2m" else tp_acc_bounds if var_type=="tp_acc" else cape_bounds if var_type=="cape_ml" else pmsl_bounds_colors if var_type=="pmsl" else wind_bounds
         cbar_ax = fig.add_axes([0.03, legend_bottom_px / FIG_H_PX, 0.94, legend_h_px / FIG_H_PX])
         cbar = fig.colorbar(im, cax=cbar_ax, orientation="horizontal", ticks=bounds)
         cbar.ax.tick_params(colors="black", labelsize=7)
@@ -440,7 +440,7 @@ for filename in sorted(os.listdir(data_dir)):
             tick_labels = [str(tick) if tick % 8 == 0 else "" for tick in bounds]
             cbar.set_ticklabels(tick_labels)
         if var_type == "tp_acc":
-            cbar.set_ticklabels([int(tick) if float(tick).is_integer() else tick for tick in prec_bounds])
+            cbar.set_ticklabels([int(tick) if float(tick).is_integer() else tick for tick in tp_acc_bounds])
     else:
         add_ww_legend_bottom(fig, ww_categories, ww_colors_base)
 
