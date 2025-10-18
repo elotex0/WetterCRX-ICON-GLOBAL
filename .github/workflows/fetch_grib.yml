@@ -1,4 +1,4 @@
-name: Fetch ECMWF GRIB2 and Generate PNGs
+name: Fetch ICON-GLOBAL GRIB2 and Generate PNGs
 
 on:
   workflow_dispatch:
@@ -17,7 +17,7 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@v3
         with:
-          token: ${{ secrets.ECMWF_PAT }}
+          token: ${{ secrets.EU_PAT }}
 
       - name: Setup Python
         uses: actions/setup-python@v4
@@ -40,7 +40,7 @@ jobs:
         run: |
           HOUR=$(date -u +%H)
           case $HOUR in
-            03|04|05|18) RUN=00 ;;
+            03|04|05) RUN=00 ;;
             15|16|17) RUN=12 ;;
           esac
           DATE=$(date -u +%Y%m%d)
@@ -49,29 +49,115 @@ jobs:
           echo "run=$RUN" >> $GITHUB_OUTPUT
           echo "date=$DATE" >> $GITHUB_OUTPUT
 
-      - name: Download ECMWF GRIB2 files
+      - name: Download t2m GRIB2 files
         run: |
-          mkdir -p data/grib2
-          cd data/grib2
-
-          # 0 bis 144 in 3h-Schritten
-          seq 0 3 144 | xargs -n 1 -P 12 -I{} bash -c '
-            h={}
-            URL="https://data.ecmwf.int/forecasts/${{ env.DATE }}/${{ env.RUN }}z/ifs/0p25/oper/${{ env.DATE }}${{ env.RUN }}0000-${h}h-oper-fc.grib2"
-            OUTFILE="ecmwf_${h}h.grib2"
-
-            echo "Downloading $URL..."
-            wget -q --show-progress -O "$OUTFILE" "$URL" || echo "Datei $URL nicht verfügbar, überspringe..."
+          mkdir -p data/t2m
+          cd data/t2m
+          seq 0 77 | xargs -n 1 -P 12 -I{} bash -c '
+            i_padded=$(printf "%03d" {})
+            URL="https://opendata.dwd.de/weather/nwp/icon-eu/grib/${{ env.RUN }}/t_2m/icon-eu_europe_regular-lat-lon_single-level_${{ env.DATE }}${{ env.RUN }}_${i_padded}_T_2M.grib2.bz2"
+            wget -O t2m_${i_padded}.grib2.bz2 "$URL" || echo "Datei $URL nicht verfügbar, überspringe..."
+            if [ -f "t2m_${i_padded}.grib2.bz2" ]; then
+              bunzip2 -f t2m_${i_padded}.grib2.bz2
+            fi
           '
 
-          # 150 bis 360 in 6h-Schritten
-          seq 150 6 360 | xargs -n 1 -P 12 -I{} bash -c '
-            h={}
-            URL="https://data.ecmwf.int/forecasts/${{ env.DATE }}/${{ env.RUN }}z/ifs/0p25/oper/${{ env.DATE }}${{ env.RUN }}0000-${h}h-oper-fc.grib2"
-            OUTFILE="ecmwf_${h}h.grib2"
+          seq 78 3 180 | xargs -n 1 -P 12 -I{} bash -c '
+            i_padded=$(printf "%03d" {})
+            URL="https://opendata.dwd.de/weather/nwp/icon-eu/grib/${{ env.RUN }}/t_2m/icon-eu_europe_regular-lat-lon_single-level_${{ env.DATE }}${{ env.RUN }}_${i_padded}_T_2M.grib2.bz2"
+            wget -O t2m_${i_padded}.grib2.bz2 "$URL" || echo "Datei $URL nicht verfügbar, überspringe..."
+            if [ -f "t2m_${i_padded}.grib2.bz2" ]; then
+              bunzip2 -f t2m_${i_padded}.grib2.bz2
+            fi
+          '
+          
+      
+      - name: Download ww GRIB2 files
+        run: |
+          mkdir -p data/ww
+          cd data/ww
+          seq 0 77 | xargs -n 1 -P 12 -I{} bash -c '
+            i_padded=$(printf "%03d" {})
+            URL="https://opendata.dwd.de/weather/nwp/icon-eu/grib/${{ env.RUN }}/ww/icon-eu_europe_regular-lat-lon_single-level_${{ env.DATE }}${{ env.RUN }}_${i_padded}_WW.grib2.bz2"
+            wget -O ww_${i_padded}.grib2.bz2 "$URL" || echo "Datei $URL nicht verfügbar, überspringe..."
+            if [ -f "ww_${i_padded}.grib2.bz2" ]; then
+              bunzip2 -f ww_${i_padded}.grib2.bz2
+            fi
+          '
 
-            echo "Downloading $URL..."
-            wget -q --show-progress -O "$OUTFILE" "$URL" || echo "Datei $URL nicht verfügbar, überspringe..."
+           seq 78 3 180 | xargs -n 1 -P 12 -I{} bash -c '
+            i_padded=$(printf "%03d" {})
+            URL="https://opendata.dwd.de/weather/nwp/icon-eu/grib/${{ env.RUN }}/ww/icon-eu_europe_regular-lat-lon_single-level_${{ env.DATE }}${{ env.RUN }}_${i_padded}_WW.grib2.bz2"
+            wget -O ww_${i_padded}.grib2.bz2 "$URL" || echo "Datei $URL nicht verfügbar, überspringe..."
+            if [ -f "ww_${i_padded}.grib2.bz2" ]; then
+              bunzip2 -f ww_${i_padded}.grib2.bz2
+            fi
+          '
+      
+      - name: Download tp GRIB2 files
+        run: |
+          mkdir -p data/tp_acc
+          cd data/tp_acc
+          seq 0 77 | xargs -n 1 -P 12 -I{} bash -c '
+            i_padded=$(printf "%03d" {})
+            URL="https://opendata.dwd.de/weather/nwp/icon-eu/grib/${{ env.RUN }}/tot_prec/icon-eu_europe_regular-lat-lon_single-level_${{ env.DATE }}${{ env.RUN }}_${i_padded}_TOT_PREC.grib2.bz2"
+            wget -O tot_prec_${i_padded}.grib2.bz2 "$URL" || echo "Datei $URL nicht verfügbar, überspringe..."
+            if [ -f "tot_prec_${i_padded}.grib2.bz2" ]; then
+              bunzip2 -f tot_prec_${i_padded}.grib2.bz2
+            fi
+          '
+
+          seq 78 3 180 | xargs -n 1 -P 12 -I{} bash -c '
+            i_padded=$(printf "%03d" {})
+            URL="https://opendata.dwd.de/weather/nwp/icon-eu/grib/${{ env.RUN }}/tot_prec/icon-eu_europe_regular-lat-lon_single-level_${{ env.DATE }}${{ env.RUN }}_${i_padded}_TOT_PREC.grib2.bz2"
+            wget -O tot_prec_${i_padded}.grib2.bz2 "$URL" || echo "Datei $URL nicht verfügbar, überspringe..."
+            if [ -f "tot_prec_${i_padded}.grib2.bz2" ]; then
+              bunzip2 -f tot_prec_${i_padded}.grib2.bz2
+            fi
+          '
+
+      - name: Download vmax_10m GRIB2 files
+        run: |
+          mkdir -p data/wind
+          cd data/wind
+          seq 0 77 | xargs -n 1 -P 12 -I{} bash -c '
+            i_padded=$(printf "%03d" {} )
+            URL="https://opendata.dwd.de/weather/nwp/icon-eu/grib/${{ env.RUN }}/vmax_10m/icon-eu_europe_regular-lat-lon_single-level_${{ env.DATE }}${{ env.RUN }}_${i_padded}_VMAX_10M.grib2.bz2"
+            wget -O wind_${i_padded}.grib2.bz2 "$URL" || echo "Datei $URL nicht verfügbar, überspringe..."
+            if [ -f "wind_${i_padded}.grib2.bz2" ]; then
+              bunzip2 -f wind_${i_padded}.grib2.bz2
+            fi
+          '
+
+          seq 78 3 180 | xargs -n 1 -P 12 -I{} bash -c '
+            i_padded=$(printf "%03d" {} )
+            URL="https://opendata.dwd.de/weather/nwp/icon-eu/grib/${{ env.RUN }}/vmax_10m/icon-eu_europe_regular-lat-lon_single-level_${{ env.DATE }}${{ env.RUN }}_${i_padded}_VMAX_10M.grib2.bz2"
+            wget -O wind_${i_padded}.grib2.bz2 "$URL" || echo "Datei $URL nicht verfügbar, überspringe..."
+            if [ -f "wind_${i_padded}.grib2.bz2" ]; then
+              bunzip2 -f wind_${i_padded}.grib2.bz2
+            fi
+          '
+
+      - name: Download pmsl GRIB2 files
+        run: |
+          mkdir -p data/pmsl
+          cd data/pmsl
+          seq 0 77 | xargs -n 1 -P 12 -I{} bash -c '
+            i_padded=$(printf "%03d" {} )
+            URL="https://opendata.dwd.de/weather/nwp/icon-eu/grib/${{ env.RUN }}/pmsl/icon-eu_europe_regular-lat-lon_single-level_${{ env.DATE }}${{ env.RUN }}_${i_padded}_PMSL.grib2.bz2"
+            wget -O pmsl_${i_padded}.grib2.bz2 "$URL" || echo "Datei $URL nicht verfügbar, überspringe..."
+            if [ -f "pmsl_${i_padded}.grib2.bz2" ]; then
+              bunzip2 -f pmsl_${i_padded}.grib2.bz2
+            fi
+          '
+
+          seq 78 3 180 | xargs -n 1 -P 12 -I{} bash -c '
+            i_padded=$(printf "%03d" {} )
+            URL="https://opendata.dwd.de/weather/nwp/icon-eu/grib/${{ env.RUN }}/pmsl/icon-eu_europe_regular-lat-lon_single-level_${{ env.DATE }}${{ env.RUN }}_${i_padded}_PMSL.grib2.bz2"
+            wget -O pmsl_${i_padded}.grib2.bz2 "$URL" || echo "Datei $URL nicht verfügbar, überspringe..."
+            if [ -f "pmsl_${i_padded}.grib2.bz2" ]; then
+              bunzip2 -f pmsl_${i_padded}.grib2.bz2
+            fi
           '
 
       - name: Upload GRIB2 as artifact
@@ -113,17 +199,17 @@ jobs:
 
       - name: Generate PNGs for ${{ matrix.variable }}
         run: |
-          mkdir -p ecmwf/${{ matrix.variable }}
+          mkdir -p iconglobal/${{ matrix.variable }}
           python scripts/generate_pngs.py \
-            data/grib2 \
-            ecmwf/${{ matrix.variable }} \
+            data/${{ matrix.variable }} \
+            iconglobal/${{ matrix.variable }} \
             ${{ matrix.variable }}
 
       - name: Upload PNGs artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ecmwf-${{ matrix.variable }}
-          path: ecmwf/${{ matrix.variable }}
+          name: iconglobal-${{ matrix.variable }}
+          path: iconglobal/${{ matrix.variable }}
 
   # -------------------------------------------------------
   # 3️⃣ Merge PNGs + Deploy to R2
@@ -138,37 +224,37 @@ jobs:
       - name: Download all PNG artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: ecmwf-*
-          path: ecmwf_raw
+          pattern: iconglobal-*
+          path: iconglobal_raw
 
       - name: Merge PNG folders into one structure
         run: |
-          mkdir -p ecmwf/${{ needs.fetch_and_generate.outputs.run }}
-          for d in ecmwf_raw/*; do
+          mkdir -p iconglobal/${{ needs.fetch_and_generate.outputs.run }}
+          for d in iconglobal_raw/*; do
             if [ -d "$d" ]; then
-              varname=$(basename "$d" | sed 's/^ecmwf-//')  # entfernt "ecmwf-" Prefix
-              mkdir -p ecmwf/${{ needs.fetch_and_generate.outputs.run }}/"$varname"
-              cp -r "$d"/* ecmwf/${{ needs.fetch_and_generate.outputs.run }}/"$varname"/ || true
+              varname=$(basename "$d" | sed 's/^iconglobal-//')  # entfernt "iconglobal-" Prefix
+              mkdir -p iconglobal/${{ needs.fetch_and_generate.outputs.run }}/"$varname"
+              cp -r "$d"/* iconglobal/${{ needs.fetch_and_generate.outputs.run }}/"$varname"/ || true
             fi
           done
 
 
           echo "Merged structure:"
-          ls -R ecmwf/${{ needs.fetch_and_generate.outputs.run }}
+          ls -R iconglobal/${{ needs.fetch_and_generate.outputs.run }}
 
       - name: Generate Metadata
         run: |
           python scripts/generate_metadata.py \
-            ecmwf/${{ needs.fetch_and_generate.outputs.run }} \
+            iconglobal/${{ needs.fetch_and_generate.outputs.run }} \
             ${{ needs.fetch_and_generate.outputs.run }} \
             ${{ needs.fetch_and_generate.outputs.date }}
 
       - name: Clean old runs on R2 except current
         run: |
-          for run_folder in $(aws s3 ls s3://${{ secrets.R2_BUCKET }}/ecmwf/ \
+          for run_folder in $(aws s3 ls s3://${{ secrets.R2_BUCKET }}/icon-global/ \
             --endpoint-url https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com | awk '{print $2}' | sed 's#/##'); do
             if [ "$run_folder" != "${{ needs.fetch_and_generate.outputs.run }}/" ]; then
-              aws s3 rm s3://${{ secrets.R2_BUCKET }}/ecmwf/$run_folder --recursive \
+              aws s3 rm s3://${{ secrets.R2_BUCKET }}/icon-global/$run_folder --recursive \
                 --endpoint-url https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
             fi
           done
@@ -178,12 +264,12 @@ jobs:
 
       - name: Upload current run and metadata.json to R2
         run: |
-          aws s3 sync ./ecmwf/${{ needs.fetch_and_generate.outputs.run }}/ \
-            s3://${{ secrets.R2_BUCKET }}/icon-eu/${{ needs.fetch_and_generate.outputs.run }}/ \
+          aws s3 sync ./iconglobal/${{ needs.fetch_and_generate.outputs.run }}/ \
+            s3://${{ secrets.R2_BUCKET }}/icon-global/${{ needs.fetch_and_generate.outputs.run }}/ \
             --endpoint-url https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
 
-          aws s3 cp ./ecmwf/metadata.json \
-            s3://${{ secrets.R2_BUCKET }}/ecmwf/metadata.json \
+          aws s3 cp ./iconglobal/metadata.json \
+            s3://${{ secrets.R2_BUCKET }}/icon-global/metadata.json \
             --endpoint-url https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
