@@ -336,6 +336,8 @@ for filename in sorted(os.listdir(data_dir)):
             smoothed_grid = gaussian_filter(data_grid, sigma=1.2)
             im = ax.pcolormesh(lon_grid, lat_grid, smoothed_grid, cmap=cmap, norm=norm, transform=ccrs.PlateCarree(), shading="auto")
         elif var_type == "pmsl":
+            smoothed_grid = gaussian_filter(data_grid, sigma=1.2)
+            im = ax.pcolormesh(lon_grid, lat_grid, smoothed_grid, cmap=cmap, norm=norm, transform=ccrs.PlateCarree(), shading="auto")
             data_hpa = data_grid
             main_levels = list(range(912, 1070, 4))
             fine_levels = list(range(912, 1070, 1))
@@ -351,6 +353,8 @@ for filename in sorted(os.listdir(data_dir)):
             texts = []
             min_city_dist = 1.1
             nlat, nlon = lon_grid.shape
+            lat = lat_grid[:, 0]  # vertikale Achse
+            lon = lon_grid[0, :]  # horizontale Achse
             lon_flat = lon_grid.flatten()
             lat_flat = lat_grid.flatten()
 
@@ -367,9 +371,17 @@ for filename in sorted(os.listdir(data_dir)):
                        (contour_points[:,1] >= lat_min + 0.5) & (contour_points[:,1] <= lat_max - 0.5)
                 contour_points = contour_points[mask]
 
-                flat_indices = [np.argmin(np.hypot(lon_flat - lon_val, lat_flat - lat_val)) for lon_val, lat_val in contour_points]
-                ij_points = [(idx // nlon, idx % nlon) for idx in flat_indices]
-                ij_points = list(dict.fromkeys(ij_points))
+                # Annahme: lon und lat sind die 1D-Achsen des Gitters
+                lat_idx = np.searchsorted(lat, contour_points[:,1])
+                lon_idx = np.searchsorted(lon, contour_points[:,0])
+
+                # Clamping, um Indexfehler zu vermeiden
+                lat_idx = np.clip(lat_idx, 0, len(lat) - 1)
+                lon_idx = np.clip(lon_idx, 0, len(lon) - 1)
+
+                # ij_points erstellen und Duplikate entfernen
+                ij_points = np.column_stack((lat_idx, lon_idx))
+                ij_points = np.unique(ij_points, axis=0)
 
                 filtered_points = []
                 for i, j in ij_points:
@@ -396,7 +408,30 @@ for filename in sorted(os.listdir(data_dir)):
 
             place_random_labels(cs_main, n_labels=5)
             place_random_labels(cs_fine, n_labels=5)
-            adjust_text(texts, ax=ax, expand_text=(1.5, 1.5), expand_points=(1.5, 1.5), force_text=(0.2, 0.2), force_points=(0.2, 0.2), arrowprops=dict(arrowstyle="-"))
+
+            # Extremwerte bestimmen
+            min_val = np.min(data_hpa)
+            max_val = np.max(data_hpa)
+
+            # Positionen des minimalen und maximalen Werts finden
+            min_pos = np.unravel_index(np.argmin(data_hpa), data_hpa.shape)
+            max_pos = np.unravel_index(np.argmax(data_hpa), data_hpa.shape)
+
+            # Tief (blau)
+            txt_min = ax.text(lon[min_pos[1]], lat[min_pos[0]], f"{min_val:.0f}",
+                            fontsize=14, color='blue', ha='center', va='center')
+            txt_min.set_path_effects([path_effects.withStroke(linewidth=2, foreground="white")])
+            texts.append(txt_min)
+            used_points.add(min_pos)
+
+            # Hoch (rot)
+            txt_max = ax.text(lon[max_pos[1]], lat[max_pos[0]], f"{max_val:.0f}",
+                            fontsize=14, color='red', ha='center', va='center')
+            txt_max.set_path_effects([path_effects.withStroke(linewidth=2, foreground="white")])
+            texts.append(txt_max)
+            used_points.add(max_pos)
+
+            adjust_text(texts, ax=ax, expand_text=(1.5, 1.5), expand_points=(1.5, 1.5), force_text=(0.2, 0.2), force_points=(0.2, 0.2), arrowprops=None)
     else:
         valid_mask = np.isfinite(data)
         codes = np.unique(data[valid_mask]).astype(int)
