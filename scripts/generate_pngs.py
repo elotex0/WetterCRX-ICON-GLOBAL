@@ -279,7 +279,7 @@ for filename in sorted(os.listdir(data_dir)):
     # Unterschiedliche Auflösung für WW
     if var_type == "ww":
         res = 0.15  # z.B. gröberes Raster für WW
-    if var_type == "pmsl":
+    elif var_type == "pmsl":
         res = 0.025
     else:
         res = 0.025  # Standard-Raster
